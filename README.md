@@ -16,7 +16,7 @@ An ultra-fast terminal utility that generates a visual tree structure of public 
 
 1. **Download the script:**
    ```bash
-   curl -O https://githubusercontent.com
+   curl -O https://raw.githubusercontent.com/Troptrap/PyTree/refs/heads/main/pytree
    ```
 
 2. **Make it executable:**
