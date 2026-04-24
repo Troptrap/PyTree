@@ -1,46 +1,144 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env python3
+import ast
+import os
+import sys
+import json
+import csv
+import argparse
+from datetime import datetime
 
-BLUE='\033[1;34m'
-GREEN='\033[1;32m'
-CYAN='\033[0;36m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# --- Configuration & Colors ---
+BLUE, GREEN, CYAN, YELLOW, RED, NC = '\033[1;34m', '\033[1;32m', '\033[0;36m', '\033[1;33m', '\033[1;31m', '\033[0m'
 
-OS_INFO=$(uname -o)
-PY_VER=$(python3 -V 2>&1 | awk '{print $2}')
-TARGET_DIR=${1:-.}
+class PyTree:
+    def __init__(self, target_dir):
+        self.target_dir = os.path.abspath(target_dir)
+        self.definitions = {}
+        self.calls = {}
+        self.file_stats = {}
 
-echo -e "${BLUE}PyTree @ $OS_INFO | Python v${PY_VER}${NC}"
-echo "------------------------------------------"
+    def get_py_files(self):
+        for root, _, files in os.walk(self.target_dir):
+            if any(x in root for x in ['__pycache__', '.git', '.venv', 'node_modules']):
+                continue
+            for f in files:
+                if f.endswith('.py'):
+                    yield os.path.join(root, f)
 
-# Folosim find pentru a genera lista de fișiere
-# Apoi pasăm lista către un singur proces awk care procesează totul
-find "$TARGET_DIR" -name "*.py" -not -path "*/.*" -not -path "*__pycache__*" | xargs awk '
-    BEGINFILE { 
-        has_funcs = 0; 
-        file_content = ""; 
-        line_count = 0;
-    }
-    # Numărăm liniile și căutăm funcții
-    { 
-        line_count++;
-        if ($0 ~ /^[[:space:]]*(async[[:space:]]+)?def [^_]/) {
-            has_funcs = 1;
-            name = $0;
-            # Curățăm numele funcției direct în awk
-            sub(/^[[:space:]]*(async[[:space:]]+)?def /, "  ├── ", name);
-            sub(/\(.*/, "()", name);
+    def parse_project(self):
+        for path in self.get_py_files():
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    self.file_stats[path] = len(content.splitlines())
+                    tree = ast.parse(content, filename=path)
+                    for node in ast.walk(tree):
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            if not node.name.startswith('_'):
+                                start = node.lineno
+                                end = getattr(node, 'end_lineno', start)
+                                self.definitions[node.name] = {
+                                    'name': node.name, 'path': path, 'line': start,
+                                    'size': end - start + 1, 'async': isinstance(node, ast.AsyncFunctionDef)
+                                }
+                        if isinstance(node, ast.Call):
+                            name = node.func.id if isinstance(node.func, ast.Name) else \
+                                   getattr(node.func, 'attr', None) if isinstance(node.func, ast.Attribute) else None
+                            if name:
+                                self.calls.setdefault(name, []).append({'caller_path': path, 'line': node.lineno})
+            except Exception as e:
+                print(f"{RED}Error parsing {path}: {e}{NC}")
+
+    def get_report_data(self):
+        data = []
+        for func, info in sorted(self.definitions.items(), key=lambda x: x[1]['path']):
+            ext_calls = [c for c in self.calls.get(func, []) if c['caller_path'] != info['path']]
+            item = info.copy()
+            item['external_calls'] = ext_calls
+            item['call_count'] = len(ext_calls)
+            data.append(item)
+        return data
+
+    def run_terminal_output(self, reverse=False):
+        data = self.get_report_data()
+        print(f"{BLUE}PyTree Engine @ {os.uname().sysname} | Python v{sys.version.split()[0]}{NC}")
+        print("-" * 50)
+        current_file = ""
+        for item in data:
+            if item['path'] != current_file:
+                current_file = item['path']
+                print(f"{GREEN}📂 {current_file} {YELLOW}[{self.file_stats[current_file]} lines]{NC}")
             
-            # Adăugăm marcajul async colorat (codurile ANSI trebuie puse manual)
-            if ($0 ~ /async/) {
-                name = name " \033[0;36m⚡(async)\033[0m";
-            }
-            file_content = file_content name "\n";
-        }
-    }
-    ENDFILE {
-        if (has_funcs) {
-            printf "\033[1;32m📂 %s \033[1;33m[%d lines]\033[0m\n", FILENAME, line_count;
-            printf "%s\n", file_content;
-        }
-    }'
+            if not reverse:
+                tag = f"{CYAN}⚡(async){NC} " if item['async'] else ""
+                print(f"  ├── {CYAN}{item['name']}(){NC} {tag}{YELLOW}({item['size']} loc){NC}")
+            else:
+                if item['call_count'] == 0:
+                    print(f"  ├── {RED}✘ {item['name']}(){NC} -> {RED}UNUSED{NC}")
+                else:
+                    print(f"  ├── {CYAN}{item['name']}(){NC} -> {YELLOW}{item['call_count']}{NC} calls:")
+                    for c in item['external_calls']:
+                        print(f"  │   └── \033[0;37m{c['caller_path']}:{c['line']}{NC}")
+
+    def export(self, export_arg):
+        data = self.get_report_data()
+        
+        # Logic to determine filename and extension
+        if export_arg.lower() in ['json', 'csv', 'html']:
+            ext = export_arg.lower()
+            filename = f"pytree_report.{ext}"
+        else:
+            filename = export_arg
+            ext = filename.split('.')[-1].lower() if '.' in filename else 'json'
+
+        if ext == 'json':
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        elif ext == 'csv':
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                csv_data = [{k: v for k, v in d.items() if k != 'external_calls'} for d in data]
+                if csv_data:
+                    writer = csv.DictWriter(f, fieldnames=csv_data[0].keys())
+                    writer.writeheader(); writer.writerows(csv_data)
+        elif ext == 'html':
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(self._generate_html(data))
+        else:
+            print(f"{RED}Unsupported format: {ext}{NC}")
+            return
+        print(f"\n{GREEN}✅ Exported to {filename}{NC}")
+
+    def _generate_html(self, data):
+        html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>PyTree</title>
+        <style>body{{font-family:monospace;background:#0d1117;color:#c9d1d9;padding:20px;}}
+        .file{{background:#161b22;border:1px solid #30363d;margin-bottom:20px;border-radius:6px;}}
+        .hdr{{background:#21262d;padding:10px;color:#7ee787;font-weight:bold;}}
+        .tree{{padding:10px 20px;white-space:pre;line-height:1.5;}}
+        .func{{color:#a5d6ff;}} .unused{{color:#f85149;}} .loc{{color:#8b949e;}}</style></head><body>
+        <h1>🌳 Project Analysis: {self.target_dir}</h1>"""
+        curr = ""
+        for item in data:
+            if item['path'] != curr:
+                if curr: html += "</div></div>"
+                curr = item['path']
+                html += f'<div class="file"><div class="hdr">📂 {os.path.relpath(curr, self.target_dir)}</div><div class="tree">'
+            status = "unused" if item['call_count'] == 0 else "func"
+            html += f"├── <span class='{status}'>{item['name']}()</span> <span class='loc'>({item['size']} loc)</span>\n"
+            for call in item['external_calls']:
+                html += f"│   └── used in {os.path.relpath(call['caller_path'], self.target_dir)}:{call['line']}\n"
+        return html + "</div></div></body></html>"
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PyTree Analysis")
+    parser.add_argument("dir", nargs="?", default=".", help="Directory to scan")
+    parser.add_argument("-d", "--directory", help="Target directory")
+    parser.add_argument("-r", "--reverse", action="store_true", help="Reverse analysis")
+    parser.add_argument("-e", "--export", help="Format (html, json, csv) or filename")
+    
+    args = parser.parse_args()
+    target = args.directory if args.directory else args.dir
+    
+    pt = PyTree(target)
+    pt.parse_project()
+    if args.export: pt.export(args.export)
+    else: pt.run_terminal_output(args.reverse)
