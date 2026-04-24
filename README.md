@@ -1,4 +1,4 @@
-# 🌳 PyTree
+# 🪾 PyTree
 
 A powerful Python utility that analyzes and visualizes the structure of your Python projects, showing public functions, their locations, sizes, and external call dependencies.
 
