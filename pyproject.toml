@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=42","wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyTree"
+authors = [
+    { name = "Your Name", email = "yourname@example.com" },
+]
+version = "0.1.0"
+description = "A brief description of the project."
+readme = "README.md"
+license = "MIT"
+keywords = ["some","keywords"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/Troptrap/PyTree"
+
+[tool.poetry]
+dependencies = {
+    python = "^3.8"
+}
+
