@@ -3,26 +3,37 @@ requires = ["setuptools>=42","wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PyTree"
-authors = [
-    { name = "Your Name", email = "yourname@example.com" },
-]
+name = "pytree"
 version = "0.1.0"
-description = "A brief description of the project."
+description = "An ultra-fast terminal utility that generates a visual tree structure of public functions within your Python projects."
 readme = "README.md"
-license = "MIT"
-keywords = ["some","keywords"]
+license = {text = "MIT"}
+authors = [
+    {name = "Troptrap", email = "your_email@example.com"}
+]
+keywords = ["python", "analysis", "ast", "tree", "visualization", "functions"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Troptrap/PyTree"
+Repository = "https://github.com/Troptrap/PyTree"
+Issues = "https://github.com/Troptrap/PyTree/issues"
 
-[tool.poetry]
-dependencies = {
-    python = "^3.8"
-}
+[project.scripts]
+pytree = "pytree:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "black", "flake8", "mypy"]
