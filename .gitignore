@@ -1,0 +1,20 @@
+# Python standard ignores
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+env/
+build/
+dist/
+*.egg-info/ 
+
+# Pytest
+.cache
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
